@@ -30,6 +30,7 @@ DJANGO_APPS = [
 ]
 THIRD_PARTY_APPS = [
     "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
 ]
 LOCAL_APPS = [
     "apps.core",
@@ -100,8 +101,8 @@ AUTH_PASSWORD_VALIDATORS = [
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        # Phase 3 adds the HttpOnly-cookie JWT authenticator here.
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        # JWT read from an HttpOnly cookie, with CSRF enforcement.
+        "apps.accounts.authentication.CookieJWTAuthentication",
     ],
     # Deny by default: every view must opt *out* explicitly (e.g. health).
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
@@ -112,8 +113,18 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
     ],
-    "DEFAULT_THROTTLE_RATES": {"anon": "30/min", "user": "300/min"},
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "60/min",
+        "user": "600/min",
+        # Per account (password guessing) and per client IP (spraying).
+        "login": env("LOGIN_THROTTLE_RATE", default="10/min"),
+        "login_ip": env("LOGIN_IP_THROTTLE_RATE", default="30/min"),
+        "ask": env("ASK_THROTTLE_RATE", default="30/min"),
+    },
     "EXCEPTION_HANDLER": "apps.core.exceptions.api_exception_handler",
+    # Requests arrive through exactly one trusted proxy (Next.js, or the ALB on
+    # AWS), so the client is the last X-Forwarded-For entry, not REMOTE_ADDR.
+    "NUM_PROXIES": env.int("NUM_PROXIES", default=1),
 }
 
 SIMPLE_JWT = {
@@ -122,11 +133,15 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "SIGNING_KEY": env("JWT_SIGNING_KEY", default=SECRET_KEY),
     "AUTH_HEADER_TYPES": ("Bearer",),
+    "USER_ID_FIELD": "id",
+    "UPDATE_LAST_LOGIN": True,
 }
 AUTH_COOKIE_ACCESS = "ciatadel_access"
 AUTH_COOKIE_REFRESH = "ciatadel_refresh"
 AUTH_COOKIE_SECURE = env.bool("AUTH_COOKIE_SECURE", default=True)
 AUTH_COOKIE_SAMESITE = "Lax"
+AUTH_COOKIE_ACCESS_PATH = "/api/"
+AUTH_COOKIE_REFRESH_PATH = "/api/v1/auth/"
 
 # Header carrying the *requested* active tenant. It is only ever a hint: the
 # server resolves it against the user's memberships on every request.
@@ -150,11 +165,16 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # --- Object storage (MinIO locally, S3 on AWS) ----------------------------------
 STORAGE = {
+    # "s3" (MinIO / AWS S3) or "memory" (tests only).
+    "BACKEND": env("STORAGE_BACKEND", default="s3"),
     "ENDPOINT_URL": env("S3_ENDPOINT_URL", default=None),  # None => real AWS S3
     "BUCKET": env("S3_BUCKET", default="ciatadel-documents"),
     "ACCESS_KEY_ID": env("S3_ACCESS_KEY_ID", default=None),
     "SECRET_ACCESS_KEY": env("S3_SECRET_ACCESS_KEY", default=None),
     "REGION": env("S3_REGION", default="us-east-1"),
+    # Server-side encryption: "AES256" (MinIO with a KMS key / S3 SSE-S3),
+    # "aws:kms" on AWS, or "" to disable.
+    "SSE": env("S3_SSE", default="AES256"),
 }
 DOCUMENT_MAX_UPLOAD_BYTES = env.int("DOCUMENT_MAX_UPLOAD_MB", default=25) * 1024 * 1024
 DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
@@ -171,9 +191,16 @@ AI = {
     "EMBEDDING_BASE_URL": env("EMBEDDING_BASE_URL", default="http://ollama:11434"),
     # Must match the pgvector column dimension; changing it requires a re-index.
     "EMBEDDING_DIM": env.int("EMBEDDING_DIM", default=768),
+    # nomic-embed-text expects task prefixes; set both to "" for other models.
+    "EMBEDDING_QUERY_PREFIX": env("EMBEDDING_QUERY_PREFIX", default="search_query: "),
+    "EMBEDDING_DOCUMENT_PREFIX": env("EMBEDDING_DOCUMENT_PREFIX", default="search_document: "),
+    "LLM_TEMPERATURE": env.float("LLM_TEMPERATURE", default=0.1),
+    "LLM_NUM_CTX": env.int("LLM_NUM_CTX", default=8192),
     "RAG_TOP_K": env.int("RAG_TOP_K", default=6),
     "RAG_CHUNK_SIZE": env.int("RAG_CHUNK_SIZE", default=1200),
     "RAG_CHUNK_OVERLAP": env.int("RAG_CHUNK_OVERLAP", default=200),
+    "PDF_MAX_PAGES": env.int("PDF_MAX_PAGES", default=500),
+    "PDF_MAX_CHARS": env.int("PDF_MAX_CHARS", default=2_000_000),
 }
 
 # --- Celery -------------------------------------------------------------------
@@ -203,4 +230,12 @@ LOGGING = {
         },
     },
     "root": {"handlers": ["console"], "level": env("LOG_LEVEL", default="INFO")},
+}
+
+# --- Cache (throttling state shared across gunicorn workers) -------------------
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env("CACHE_URL", default="redis://redis:6379/1"),
+    }
 }

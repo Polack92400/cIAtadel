@@ -5,6 +5,7 @@ from django.db import models
 from django.utils import timezone
 
 from .managers import UserManager
+from .roles import Role
 
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -32,3 +33,24 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self) -> str:
         return self.email
+
+
+class Membership(models.Model):
+    """The *only* thing that grants a user access to a firm."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="memberships")
+    tenant = models.ForeignKey(
+        "tenants.Tenant", on_delete=models.CASCADE, related_name="memberships"
+    )
+    role = models.CharField(max_length=16, choices=Role.choices, default=Role.MEMBER)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "tenant"], name="uniq_membership_user_tenant")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user} @ {self.tenant} ({self.role})"

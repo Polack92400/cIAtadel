@@ -1,5 +1,6 @@
 import logging
 
+from rest_framework.exceptions import APIException
 from rest_framework.views import exception_handler
 
 logger = logging.getLogger(__name__)
@@ -25,3 +26,9 @@ def api_exception_handler(exc, context):
         }
     }
     return response
+
+
+class ServiceUnavailable(APIException):
+    status_code = 503
+    default_detail = "Service temporarily unavailable."
+    default_code = "service_unavailable"

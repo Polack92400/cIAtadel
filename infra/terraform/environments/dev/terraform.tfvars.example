@@ -1,0 +1,7 @@
+region          = "eu-west-3"
+domain_name     = "app.ciatadel.example"
+certificate_arn = "arn:aws:acm:eu-west-3:123456789012:certificate/00000000-0000-0000-0000-000000000000"
+bucket_suffix   = "a1b2c3"
+backend_image   = "123456789012.dkr.ecr.eu-west-3.amazonaws.com/ciatadel-backend:0.1.0"
+frontend_image  = "123456789012.dkr.ecr.eu-west-3.amazonaws.com/ciatadel-frontend:0.1.0"
+llm_base_url    = "http://inference.ciatadel-dev.internal:11434"

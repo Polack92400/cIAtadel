@@ -1,0 +1,23 @@
+# CI / no-GPU override: deterministic fake AI providers, no Ollama download.
+#   docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build --wait
+x-fake-ai: &fake-ai
+  LLM_PROVIDER: fake
+  EMBEDDING_PROVIDER: fake
+  EMBEDDING_QUERY_PREFIX: ""
+  EMBEDDING_DOCUMENT_PREFIX: ""
+
+services:
+  ollama:
+    profiles: ["disabled"]
+  ollama-init:
+    profiles: ["disabled"]
+  init:
+    environment: *fake-ai
+  backend:
+    environment: *fake-ai
+    depends_on: !override
+      init: { condition: service_completed_successfully }
+  worker:
+    environment: *fake-ai
+    depends_on: !override
+      init: { condition: service_completed_successfully }

@@ -34,7 +34,7 @@ firm A; a malicious **document** (prompt injection, parser exploit).
 | T10 | Token theft via XSS (S)                         | Access/refresh JWT in **HttpOnly, SameSite=Lax, Secure** cookies; short access TTL; refresh rotation; CSP in Phase 4                | JS cannot read tokens; logout clears cookies                    |
 | T11 | CSRF on cookie-auth (T)                          | Django CSRF double-submit on unsafe methods; SameSite=Lax                                                                          | POST without token → 403                                        |
 | T12 | Privilege escalation inside firm (E)             | Role checks (`owner/admin/member/viewer`) server-side; admins can't grant above own role; last owner protected                    | member calls admin endpoints → 403                              |
-| T13 | Brute force login (S/D)                          | DRF throttling, generic errors, audit `auth.login_failed`                                                                          | repeated failures throttled                                     |
+| T13 | Brute force login (S/D)                          | Throttling per target account and per client IP (taken from the last X-Forwarded-For hop added by the trusted proxy), generic errors, failed sign-ins audited in the account's firms | repeated failures → 429 while other accounts still log in |
 | T14 | Repudiation (R)                                  | `AuditEvent` append-only (no update/delete API, DB trigger blocks UPDATE/DELETE)                                                   | events written for login, upload, download, delete, role change |
 | T15 | Info leak via errors (I)                         | DEBUG off outside dev; uniform error envelope; request ID instead of stack traces                                                  | 404/500 contain no traceback (already tested in Phase 1)        |
 | T16 | Celery task tampering (T/E)                      | Tasks take only IDs; worker re-loads the Document and derives tenant from DB; JSON serializer only                                 | task with forged tenant arg impossible by signature             |
@@ -103,7 +103,14 @@ Plan (Phase 3, tested in Phase 9):
   Only `BACKEND_INTERNAL_URL` is known to Next.js, and only server-side.
 - On AWS: Secrets Manager + KMS; IAM task roles instead of static S3 keys.
 
-## 7. Known POC limitations (tracked)
+## 7. Implementation status
+
+All controls T1–T16 are implemented and covered by tests in
+`backend/tests/security`, `backend/apps/*/tests` and `frontend/e2e`
+(see `docs/roadmap.md`). Gaps and hardening items are listed in
+[`docs/limitations.md`](../limitations.md).
+
+## 8. Known POC limitations (summary)
 
 - No MFA, SSO or password-reset flow (OIDC-ready model only).
 - No antivirus / CDR on PDFs (pypdf parsing in a time-limited worker only).

@@ -1,36 +1,45 @@
 # Delivery roadmap
 
-| Phase | Scope                                              | Status           |
-|-------|----------------------------------------------------|------------------|
-| 1     | Architecture and project scaffolding               | ✅ Awaiting review |
-| 2     | Docker Compose and local infrastructure            | ⏳ Next          |
-| 3     | Django models, authentication, tenant isolation, RLS | Planned        |
-| 4     | Next.js frontend and authentication integration    | Planned          |
-| 5     | Document management and MinIO integration         | Planned          |
-| 6     | Celery PDF processing and pgvector indexing        | Planned          |
-| 7     | Ollama integration and RAG                         | Planned          |
-| 8     | Chat interface and source citations                | Planned          |
-| 9     | Security tests and automated integration tests     | Planned          |
-| 10    | Documentation and Terraform preparation            | Planned          |
+| Phase | Scope | Status |
+|---|---|---|
+| 1 | Architecture and project scaffolding | ✅ Done |
+| 2 | Docker Compose and local infrastructure | ✅ Done |
+| 3 | Django models, authentication, tenant isolation, RLS | ✅ Done |
+| 4 | Next.js frontend and authentication integration | ✅ Done |
+| 5 | Document management and MinIO integration | ✅ Done |
+| 6 | Celery PDF processing and pgvector indexing | ✅ Done |
+| 7 | Ollama integration and RAG | ✅ Done |
+| 8 | Chat interface and source citations | ✅ Done |
+| 9 | Security tests and automated integration tests | ✅ Done |
+| 10 | Documentation and Terraform preparation | ✅ Done |
 
-## Phase 1 — delivered
+## Definition of done (from the brief)
 
-- Architecture overview with diagrams: `architecture/overview.md`
-- Threat model / security design: `architecture/security-design.md`
-- ADRs 0001–0004: `adr/`
-- Django project: split settings (base/dev/test/prod), 9 apps, custom UUID
-  `User`, minimal `Tenant`, `TenantOwnedModel` + fail-closed
-  `TenantScopedQuerySet`, request-ID middleware, error envelope, health
-  endpoints, deny-by-default DRF config.
-- Next.js 15 App Router scaffold: Tailwind v4 tokens, shadcn/ui config,
-  TanStack Query provider, same-origin API client, `/api` rewrite to Django,
-  security headers.
-- `.env.example`, `.gitignore`, `Makefile`, GitHub Actions CI.
+| Criterion | Where |
+|---|---|
+| Starts locally through Docker Compose | `docker compose up -d --build --wait` (README) |
+| Two fictional firms | `seed_demo`: Dupont & Associes, Northwind Audit; `create_tenant` command |
+| Multiple users with different permissions | owner / admin / member / viewer, ethical-wall matters |
+| Upload and manage PDFs | Documents pages; upload, filter, move, download, delete |
+| Asynchronous processing | Celery worker, live status in the UI |
+| Query through a local LLM | Ollama (`llama3.2:3b` + `nomic-embed-text`) |
+| Source references | Citations with document and page, excerpt, link |
+| Conversations persist | Conversation history per user and firm |
+| Cross-tenant access rejected | `backend/tests/security/`, Playwright `authorization.spec.ts` |
+| Automated functional and security tests pass | 86 backend tests, 9 Playwright tests, CI |
+| Setup and architecture documentation | README, `docs/` |
 
-## Phase 1 — remaining limitations
+## Test inventory
 
-- No Docker Compose yet (Phase 2) — the stack does not start as a whole.
-- No authentication endpoints, memberships or RLS yet (Phase 3).
-- `TenantOwnedModel` is not used by any concrete model yet.
-- CI runs backend tests against PostgreSQL but nothing PostgreSQL-specific is
-  tested until Phase 3.
+- `backend/apps/*/tests`: auth (cookies, CSRF, rotation, throttling,
+  deactivation), member administration and role escalation, document
+  validation/processing/deletion, chunking and extraction.
+- `backend/tests/security`: tenant isolation and IDOR on every endpoint,
+  forged tenant header, mass assignment, matter ACLs, PostgreSQL RLS with a
+  non-superuser role, append-only audit, vector-search isolation, prompt
+  injection.
+- `backend/tests/integration`: upload → index → question → cited answer;
+  insufficient context; LLM outage leaves no partial state.
+- `frontend/e2e`: login/logout, HttpOnly cookies, unauthorized navigation,
+  cross-firm URL access, ethical wall, upload → indexing → delete, invalid
+  upload, chat with citations and persistence.
