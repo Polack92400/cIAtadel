@@ -5,6 +5,12 @@ from django.urls import include, path
 # same-origin; nothing else (PostgreSQL, MinIO, Ollama) is reachable from it.
 api_v1 = [
     path("", include("apps.core.urls")),
+    path("", include("apps.accounts.urls")),
+    path("", include("apps.tenants.urls")),
+    path("", include("apps.matters.urls")),
+    path("", include("apps.documents.urls")),
+    path("", include("apps.conversations.urls")),
+    path("", include("apps.audit.urls")),
 ]
 
 urlpatterns = [
