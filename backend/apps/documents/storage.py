@@ -30,6 +30,7 @@ class S3Storage:
         from botocore.config import Config
 
         self.bucket = cfg["BUCKET"]
+        self.sse = cfg.get("SSE") or ""
         self.client = boto3.client(
             "s3",
             endpoint_url=cfg["ENDPOINT_URL"] or None,
@@ -44,13 +45,9 @@ class S3Storage:
         )
 
     def put(self, key, data, content_type):
-        # SSE-S3 here; on AWS the bucket default should be SSE-KMS.
+        extra = {"ServerSideEncryption": self.sse} if self.sse else {}
         self.client.put_object(
-            Bucket=self.bucket,
-            Key=key,
-            Body=data,
-            ContentType=content_type,
-            ServerSideEncryption="AES256",
+            Bucket=self.bucket, Key=key, Body=data, ContentType=content_type, **extra
         )
 
     def get(self, key):

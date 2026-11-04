@@ -116,10 +116,15 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon": "60/min",
         "user": "600/min",
+        # Per account (password guessing) and per client IP (spraying).
         "login": env("LOGIN_THROTTLE_RATE", default="10/min"),
+        "login_ip": env("LOGIN_IP_THROTTLE_RATE", default="30/min"),
         "ask": env("ASK_THROTTLE_RATE", default="30/min"),
     },
     "EXCEPTION_HANDLER": "apps.core.exceptions.api_exception_handler",
+    # Requests arrive through exactly one trusted proxy (Next.js, or the ALB on
+    # AWS), so the client is the last X-Forwarded-For entry, not REMOTE_ADDR.
+    "NUM_PROXIES": env.int("NUM_PROXIES", default=1),
 }
 
 SIMPLE_JWT = {
@@ -167,6 +172,9 @@ STORAGE = {
     "ACCESS_KEY_ID": env("S3_ACCESS_KEY_ID", default=None),
     "SECRET_ACCESS_KEY": env("S3_SECRET_ACCESS_KEY", default=None),
     "REGION": env("S3_REGION", default="us-east-1"),
+    # Server-side encryption: "AES256" (MinIO with a KMS key / S3 SSE-S3),
+    # "aws:kms" on AWS, or "" to disable.
+    "SSE": env("S3_SSE", default="AES256"),
 }
 DOCUMENT_MAX_UPLOAD_BYTES = env.int("DOCUMENT_MAX_UPLOAD_MB", default=25) * 1024 * 1024
 DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024

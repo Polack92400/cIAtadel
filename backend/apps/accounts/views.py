@@ -6,7 +6,6 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import exceptions, generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -25,6 +24,7 @@ from .serializers import (
     MemberSerializer,
     MeSerializer,
 )
+from .throttling import LoginAccountThrottle, LoginIPThrottle
 
 User = get_user_model()
 SEC = AuditEvent.Category.SECURITY
@@ -45,8 +45,7 @@ class CsrfView(APIView):
 class LoginView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "login"
+    throttle_classes = [LoginIPThrottle, LoginAccountThrottle]
 
     def post(self, request):
         enforce_csrf(request)
@@ -55,9 +54,11 @@ class LoginView(APIView):
         email = ser.validated_data["email"].lower()
         user = authenticate(request, email=email, password=ser.validated_data["password"])
         if user is None:
-            # Returned (not raised) so the audit row is committed.
-            audit.record(
-                "auth.login", category=SEC, request=request, outcome="failure", email=email
+            # Returned (not raised) so the audit row is committed. Attributed
+            # to the targeted account's firms when the account exists.
+            target = User.objects.filter(email=email, is_active=True).first()
+            audit.record_for_user_firms(
+                "auth.login", user=target, request=request, outcome="failure", email=email
             )
             return Response(
                 {"error": {"status": 401, "detail": "Invalid email or password."}},
@@ -65,7 +66,7 @@ class LoginView(APIView):
             )
         refresh = RefreshToken.for_user(user)
         User.objects.filter(pk=user.pk).update(last_login=refresh.current_time)
-        audit.record("auth.login", category=SEC, request=request, actor=user)
+        audit.record_for_user_firms("auth.login", user=user, request=request)
         response = Response(MeSerializer(user).data)
         set_auth_cookies(response, refresh)
         return response
@@ -107,7 +108,7 @@ class LogoutView(APIView):
                 token = RefreshToken(raw)
                 actor = User.objects.filter(pk=token["user_id"]).first()
                 token.blacklist()
-                audit.record("auth.logout", category=SEC, request=request, actor=actor)
+                audit.record_for_user_firms("auth.logout", user=actor, request=request)
             except TokenError:
                 pass
         response = Response(status=status.HTTP_204_NO_CONTENT)
