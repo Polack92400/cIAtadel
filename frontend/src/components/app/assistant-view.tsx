@@ -150,7 +150,7 @@ function ChatPanel({ id }: { id: string }) {
                 <>
                   {m.insufficient_context && <Badge tone="warning" className="mb-2">Not found in your documents</Badge>}
                   <AnswerText text={m.content} citations={m.citations} onCite={(n) => cite(n, m.id)} />
-                  <Sources citations={m.citations} highlight={highlight} />
+                  <Sources citations={m.citations} highlight={highlight} insufficient={m.insufficient_context} />
                   <p className="mt-2 text-[11px] text-muted-foreground">
                     {m.model_name} · {m.latency_ms ? `${(m.latency_ms / 1000).toFixed(1)} s` : ""} · AI-generated, verify against the sources. Not legal or accounting advice.
                   </p>

@@ -40,11 +40,11 @@ class FakeLLM:
 
     def generate(self, messages: list[ChatMessage]) -> str:
         user = messages[-1].content
-        first = re.search(r'<source id="(\d+)"[^>]*>\s*(.+?)\s*</source>', user, re.S)
+        first = re.search(r'<source id="S(\d+)"[^>]*>\s*(.+?)\s*</source>', user, re.S)
         if not first:
             return "The available documents do not contain enough information to answer."
         sentence = first.group(2).split(". ")[0].strip()[:300]
         return (
-            f"**From the documents:** {sentence} [{first.group(1)}]\n\n"
+            f"**From the documents:** {sentence} [S{first.group(1)}]\n\n"
             "**Interpretation:** This is a deterministic test answer."
         )

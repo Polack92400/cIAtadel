@@ -39,7 +39,7 @@ services:
       APP_DB_PASSWORD: ${APP_DB_PASSWORD}
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./docker/postgres/10-app-role.sh:/docker-entrypoint-initdb.d/10-app-role.sh:ro
+      - ./docker/postgres/10-app-role.sh:/docker-entrypoint-initdb.d/10-app-role.sh:ro,z
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -169,6 +169,26 @@ services:
       retries: 20
     networks: [backend, edge]
     restart: unless-stopped
+
+  # Backend test suite against the compose PostgreSQL (pgvector + RLS):
+  #   docker compose --profile test run --rm backend-test
+  backend-test:
+    profiles: ["test"]
+    build:
+      context: ./backend
+      target: dev
+    image: ciatadel-backend-dev:local
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.test
+      # The owner role is needed to create the throw-away test database.
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - ./backend:/app:ro
+    command: ["pytest", "-p", "no:cacheprovider", "-q"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [backend]
 
 networks:
   backend:

@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * Renders model output as plain React elements (no HTML injection): supports
- * **bold** and [n] citation markers, which become buttons that highlight the
+ * **bold** and [S<n>] citation markers, which become buttons that highlight the
  * matching source.
  */
 export function AnswerText({
@@ -33,7 +33,7 @@ export function AnswerText({
 
 function renderInline(text: string, known: Set<number>, onCite: (n: number) => void) {
   const out: React.ReactNode[] = [];
-  const re = /(\*\*[^*]+\*\*|\[\d{1,2}\])/g;
+  const re = /(\*\*[^*]+\*\*|\[S\d{1,2}\])/g;
   let last = 0;
   let m: RegExpExecArray | null;
   let k = 0;
@@ -43,7 +43,7 @@ function renderInline(text: string, known: Set<number>, onCite: (n: number) => v
     if (tok.startsWith("**")) {
       out.push(<strong key={k++} className="font-semibold">{tok.slice(2, -2)}</strong>);
     } else {
-      const n = Number(tok.slice(1, -1));
+      const n = Number(tok.slice(2, -1));
       out.push(
         known.has(n) ? (
           <button key={k++} type="button" onClick={() => onCite(n)}
@@ -62,18 +62,33 @@ function renderInline(text: string, known: Set<number>, onCite: (n: number) => v
   return out;
 }
 
-export function Sources({ citations, highlight }: { citations: Citation[]; highlight: number | null }) {
+export function Sources({
+  citations,
+  highlight,
+  insufficient,
+}: {
+  citations: Citation[];
+  highlight: number | null;
+  insufficient: boolean;
+}) {
   const [showAll, setShowAll] = React.useState(false);
   const used = citations.filter((c) => c.used);
   const other = citations.filter((c) => !c.used);
   if (citations.length === 0) return null;
+  // If the model answered without explicit [n] markers, be transparent and
+  // show every passage it was given rather than hiding the provenance.
+  const uncited = used.length === 0 && !insufficient;
   const highlightedHidden = highlight !== null && other.some((c) => c.number === highlight);
-  const shown = showAll || highlightedHidden ? [...used, ...other] : used;
+  const shown = showAll || highlightedHidden || uncited ? [...used, ...other] : used;
+  const heading =
+    used.length > 0
+      ? "Cited sources from your documents"
+      : uncited
+        ? "Passages provided to the assistant (no explicit citation in the answer)"
+        : "Passages searched";
   return (
     <div className="mt-3 space-y-2" data-testid="sources">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {used.length > 0 ? "Cited sources from your documents" : "No passage was cited"}
-      </p>
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{heading}</p>
       <ul className="space-y-2">
         {shown.map((c) => (
           <li key={c.number} id={`src-${c.number}`}
@@ -90,18 +105,33 @@ export function Sources({ citations, highlight }: { citations: Citation[]; highl
                 <span className="font-medium">{c.document_title} (deleted)</span>
               )}
               {c.page_number && <span className="text-muted-foreground">page {c.page_number}</span>}
-              {!c.used && <span className="text-muted-foreground">· retrieved, not cited</span>}
+              {!c.used && !uncited && <span className="text-muted-foreground">· retrieved, not cited</span>}
             </div>
-            {c.excerpt && <p className="line-clamp-4 whitespace-pre-wrap text-muted-foreground">{c.excerpt}</p>}
+            {c.excerpt && <Excerpt text={c.excerpt} />}
           </li>
         ))}
       </ul>
-      {other.length > 0 && !highlightedHidden && (
+      {other.length > 0 && !highlightedHidden && !uncited && (
         <button type="button" onClick={() => setShowAll((v) => !v)}
           className="text-xs font-medium text-primary hover:underline">
           {showAll ? "Hide" : "Show"} {other.length} other retrieved passage{other.length > 1 ? "s" : ""}
         </button>
       )}
     </div>
+  );
+}
+
+function Excerpt({ text }: { text: string }) {
+  const [open, setOpen] = React.useState(false);
+  const long = text.length > 320;
+  return (
+    <>
+      <p className={cn("whitespace-pre-wrap text-muted-foreground", !open && long && "line-clamp-4")}>{text}</p>
+      {long && (
+        <button type="button" onClick={() => setOpen((v) => !v)} className="mt-1 text-primary hover:underline">
+          {open ? "Show less" : "Show full passage"}
+        </button>
+      )}
+    </>
   );
 }

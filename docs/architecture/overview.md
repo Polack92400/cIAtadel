@@ -1,7 +1,7 @@
 # cIAtadel — Architecture Overview
 
-> Status: Phase 1 (architecture + scaffolding). POC with fictional data only —
-> no compliance or certification is claimed.
+> Status: implemented (phases 1–10). POC with fictional data only; no
+> compliance or certification is claimed.
 
 ## 1. Guiding principles
 
@@ -20,7 +20,7 @@
 5. **Documents are untrusted input.** Parsed in a worker with time/size limits,
    never executed, and treated as *data* inside LLM prompts.
 
-## 2. Local runtime (Docker Compose — Phase 2)
+## 2. Local runtime (Docker Compose)
 
 ```mermaid
 flowchart LR
@@ -38,8 +38,13 @@ flowchart LR
     end
 ```
 
-Only the frontend port is published by default. MinIO console / Postgres can be
-exposed through an opt-in `docker-compose.override.yml` for debugging.
+Only the frontend port is published, on 127.0.0.1. The `backend` network is
+`internal: true` (no internet access); Ollama additionally joins an `egress`
+network to download models. One-shot jobs: `ollama-init` (model pull) and
+`init` (migrations as the owner role, bucket creation, demo seed). Django and
+Celery connect as `ciatadel_app`, a non-owner role without `BYPASSRLS`
+(`docker/postgres/10-app-role.sh`). MinIO encrypts objects at rest (SSE with
+a static KMS key from `.env`); its web console is disabled.
 
 ## 3. Backend modules
 
@@ -111,7 +116,7 @@ sequenceDiagram
     end
 ```
 
-### 4.2 Document ingestion (Phases 5–6)
+### 4.2 Document ingestion
 
 ```mermaid
 sequenceDiagram
@@ -135,16 +140,16 @@ sequenceDiagram
     Note over Q,P: any failure → status=FAILED + error code, no partial chunks
 ```
 
-### 4.3 RAG question (Phases 7–8)
+### 4.3 RAG question
 
 1. Authenticate; resolve tenant from membership; check matter access.
 2. Embed the question.
 3. `SELECT ... FROM rag_documentchunk WHERE tenant_id = :t AND matter_id = ANY(:allowed) AND document.status='READY' ORDER BY embedding <=> :q LIMIT :k` — the filter and the ranking happen **in the same query**.
 4. Build the prompt: system rules → retrieved passages wrapped in delimited,
    labelled `<document>` blocks marked as untrusted → user question.
-5. Call the LLM (streamed when possible); require answers to cite `[n]`
-   markers; respond "not found in the provided documents" when context is
-   insufficient.
+5. Call the LLM (non-streamed in the POC); require answers to cite `[n]`
+   markers; respond with a fixed "not enough information" sentence when the
+   context is insufficient (no LLM call at all when nothing is retrieved).
 6. Persist `Message` + `Citation` rows (doc, page, chunk) under the same tenant.
 
 ## 5. Frontend
@@ -153,10 +158,13 @@ Next.js App Router + TypeScript + Tailwind + shadcn/ui + TanStack Query.
 
 - Same-origin only; tokens live in HttpOnly cookies, CSRF double-submit for
   mutations (`src/lib/api.ts`).
-- Route groups (Phase 4): `(auth)/login`, `(app)/[tenant]/dashboard`,
-  `documents`, `assistant`, `admin`, `audit`. Middleware redirects
-  unauthenticated users; **the server remains the only authority** — hidden UI
-  is never treated as access control.
+- Routes: `/login`, and inside the `(app)` group `/dashboard`, `/documents`,
+  `/documents/[id]`, `/matters`, `/assistant/[id]`, `/admin`, `/audit`. The
+  active firm is chosen in the top bar and sent as `X-Tenant-ID`. Middleware
+  redirects visitors without a session to `/login`; **the server remains the
+  only authority**: hidden UI is never treated as access control.
+- Model output is rendered as React text nodes (bold and `[n]` chips only):
+  no HTML from the model ever reaches the DOM.
 
 ## 6. AWS target mapping (Phase 10, not deployed)
 
@@ -189,8 +197,9 @@ See `../../mermaid-diagram.png` for the target landing zone.
 │   ├── architecture/        this overview + security design
 │   ├── adr/                 architecture decision records
 │   └── roadmap.md           phase tracker
-├── infra/terraform/         (Phase 10) module skeleton
-├── docker-compose.yml       (Phase 2)
+├── infra/terraform/         AWS modules (validated, not applied)
+├── docker/postgres/         runtime DB role bootstrap
+├── docker-compose.yml       local stack (+ .ci.yml, .gpu.yml overrides)
 ├── .env.example
 └── .github/workflows/ci.yml
 ```

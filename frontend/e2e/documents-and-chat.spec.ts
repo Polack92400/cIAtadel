@@ -76,9 +76,11 @@ test("ask the assistant and get a cited answer", async ({ page }) => {
   await expect(answer).toBeVisible({ timeout: 240_000 });
   await expect(answer.getByTestId("sources")).toContainText("Master Services Agreement");
   await expect(answer.getByTestId("sources")).toContainText(/page \d/);
-  await expect(answer).toContainText(/90|ninety/i);
+  // With the real local LLM, also check the content (CI uses a fake model).
+  const expected = process.env.E2E_FAKE_LLM ? /From the documents/ : /90|ninety/i;
+  await expect(answer).toContainText(expected);
 
   // Persisted: reload and the conversation is still there.
   await page.reload();
-  await expect(page.getByTestId("message-assistant").last()).toContainText(/90|ninety/i);
+  await expect(page.getByTestId("message-assistant").last()).toContainText(expected);
 });

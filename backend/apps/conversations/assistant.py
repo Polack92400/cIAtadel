@@ -13,7 +13,8 @@ from apps.rag.retrieval import search
 from .models import Citation, Conversation, Message
 
 logger = logging.getLogger(__name__)
-_CITE = re.compile(r"\[(\d{1,2})\]")
+# Sources are labelled S1..Sk so they cannot be confused with clause numbers.
+_CITE = re.compile(r"\[S(\d{1,2})\]")
 HISTORY_TURNS = 4
 
 
@@ -46,7 +47,9 @@ def answer(*, conversation: Conversation, membership, question: str) -> Message:
             ]
         ]
         text = llm.generate(build_messages(question, sources, history))
-        insufficient = NOT_FOUND.lower()[:40] in text.lower()
+        # Only a reply that *is* the refusal counts (small models sometimes
+        # append it after a valid answer).
+        insufficient = text.strip().strip('"').lower().startswith(NOT_FOUND.lower()[:60])
 
     used = {int(n) for n in _CITE.findall(text)}
     with transaction.atomic():

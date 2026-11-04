@@ -15,8 +15,7 @@ class CitationSerializer(serializers.ModelSerializer):
     def get_excerpt(self, obj):
         if obj.chunk is None:
             return None  # source document was deleted
-        text = obj.chunk.content
-        return text if len(text) <= 600 else text[:600] + "…"
+        return obj.chunk.content  # bounded by RAG_CHUNK_SIZE
 
 
 class MessageSerializer(serializers.ModelSerializer):

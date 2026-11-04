@@ -29,7 +29,7 @@ def test_end_to_end_question_answering_with_citations(as_user, run_tasks):
     )
     assert resp.status_code == 201, resp.content
     msg = resp.json()
-    assert msg["role"] == "assistant" and "[1]" in msg["content"]
+    assert msg["role"] == "assistant" and "[S1]" in msg["content"]
     top = msg["citations"][0]
     assert top["used"] and top["document"] == doc["id"]
     assert top["page_number"] == 2 and "ninety days" in top["excerpt"]
@@ -80,3 +80,27 @@ def test_dashboard_summarises_workspace(as_user, run_tasks):
     data = client.get("/api/v1/dashboard").json()
     assert data["document_total"] == 1 and data["documents_by_status"]["ready"] == 1
     assert data["tenant"]["name"] == "Firm A" and data["role"] == "member"
+
+
+def test_refusal_appended_after_a_real_answer_is_not_flagged_insufficient(
+    as_user, run_tasks, monkeypatch
+):
+    from apps.conversations import assistant
+
+    class Chatty:
+        model = "chatty"
+
+        def generate(self, messages):
+            return f"**From the documents:** Ninety days notice.\n\n**Interpretation:** {NOT_FOUND}"
+
+    client = as_user("bob")
+    run_tasks(upload, client, pdf_bytes("Termination requires ninety days notice."))
+    monkeypatch.setattr(assistant, "get_llm", lambda: Chatty())
+    conv = client.post("/api/v1/conversations", {}, format="json").json()
+    msg = client.post(
+        f"/api/v1/conversations/{conv['id']}/messages",
+        {"content": "notice to terminate?"},
+        format="json",
+    ).json()
+    assert msg["insufficient_context"] is False
+    assert msg["citations"] and not any(c["used"] for c in msg["citations"])
